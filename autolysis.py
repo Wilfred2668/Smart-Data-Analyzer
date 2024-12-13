@@ -66,53 +66,70 @@ def analyze_missing_values(data):
 
 # Generate key visualizations
 def create_visualizations(data):
+    image_files = []
     numeric_data = data.select_dtypes(include=["number"])
-    
+
     # Visualization 1: Correlation Matrix
     if numeric_data.shape[1] > 1:
         correlation_matrix = numeric_data.corr()
         sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", cbar=True)
+        filename = "correlation_matrix.png"
         plt.title("Correlation Matrix")
-        plt.savefig("correlation_matrix.png")
+        plt.savefig(filename)
+        image_files.append(filename)
         plt.close()
 
-    # Visualization 2: Histogram for all numeric columns
+    # Visualization 2: Histogram for Key Numeric Column
     for column in numeric_data.columns[:1]:  # Focus on 1 key column for speed
         sns.histplot(numeric_data[column], kde=True, bins=30, color='blue')
+        filename = f"distribution_{column}.png"
         plt.title(f"Distribution of {column}")
-        plt.savefig(f"distribution_{column}.png")
+        plt.savefig(filename)
+        image_files.append(filename)
         plt.close()
 
-    # Visualization 3: Pairplot (subset of columns for performance)
+    # Visualization 3: Pairplot
+    filename = "pairplot.png"
     sns.pairplot(numeric_data.iloc[:, :3])  # Limit pairplot to first 3 columns
-    plt.savefig("pairplot.png")
+    plt.savefig(filename)
+    image_files.append(filename)
     plt.close()
 
+    return image_files
+
 # Generate a comprehensive prompt
-def generate_prompt(data):
+def generate_prompt(data, image_files):
     column_info = data.describe(include="all").to_dict()
     missing_values = analyze_missing_values(data).to_dict()
+
     prompt = f"""
     Analyze the following dataset:
     - Column details: {column_info}
     - Missing values summary: {missing_values}
+    - Generated visualizations:
+        - Correlation Matrix: {image_files[0]}
+        - Distribution of Key Numeric Column: {image_files[1]}
+        - Pairplot: {image_files[2]}
+
     Use Python (pandas, seaborn, matplotlib) for the analysis. Suggest patterns, trends, anomalies, and other key findings. Provide insights that can be deduced.
-    Also describe all the charts generated.
+    Also analyse the charts and give insights on those.
     Note: Dont give codes instead do the analysis yourself and then provide the necessary values. At the end give a proper narrative. 
-    Make it as detailed and neat as possible. It should be well_structured, should contain proper analysis and proper visualization
+    Make it as detailed and neat as possible. It should be well_structured, should contain proper analysis and proper visualization.
     """
     return prompt
 
-# Generate README with detailed insights
-def generate_readme(insights):
+# Generate README with detailed insights and visualizations
+def generate_readme(insights, image_files):
     with open("README.md", "w") as f:
         f.write("# Automated Dataset Analysis\n\n")
         f.write("## Insights\n")
         f.write(insights)
         f.write("\n\n## Visualizations\n")
-        f.write("- Correlation Matrix: correlation_matrix.png\n")
-        f.write("- Distribution of Key Numeric Column: distribution_<column>.png\n")
-        f.write("- Pairplot: pairplot.png\n")
+        for image in image_files:
+            f.write(f"- {image}\n")
+        f.write("\n\n### Embedded Graphs\n")
+        for image in image_files:
+            f.write(f"![{image}](./{image})\n")
 
 # Main analysis function
 def analyze_dataset(filename):
@@ -121,17 +138,17 @@ def analyze_dataset(filename):
         if data is None:
             return
 
-        # Generate visualizations
-        create_visualizations(data)
+        # Generate visualizations and get file paths
+        image_files = create_visualizations(data)
 
         # Generate and fetch insights
-        prompt = generate_prompt(data)
+        prompt = generate_prompt(data, image_files)
         insights = fetch_llm_response(prompt)
         print("LLM Analysis:")
         print(insights)
 
         # Generate README
-        generate_readme(insights)
+        generate_readme(insights, image_files)
 
     except Exception as e:
         print(f"Error during analysis: {e}")
@@ -139,7 +156,9 @@ def analyze_dataset(filename):
 # Run the script when called
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: uv run autolysis.py <dataset.csv>")
+        print("Usage: python autolysis.py <dataset.csv>")
         sys.exit(1)
     dataset_filename = sys.argv[1]
     analyze_dataset(dataset_filename)
+
+

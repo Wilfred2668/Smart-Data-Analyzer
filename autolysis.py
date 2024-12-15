@@ -77,25 +77,62 @@ def analyze_correlation(data):
         return correlation_matrix
     return None
 
-# Additional visualizations
+# Streamlined visualizations
+
 def create_visualizations(data):
     numeric_data = data.select_dtypes(include=[np.number])
-    for column in numeric_data.columns:
-        sns.histplot(data[column], kde=True)
-        plt.title(f"Distribution of {column}")
-        plt.savefig(f"{column}_distribution.png")
+    categorical_data = data.select_dtypes(exclude=[np.number])
+
+    # Correlation matrix
+    if numeric_data.shape[1] > 1:
+        sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm")
+        plt.title("Correlation Heatmap")
+        plt.savefig("correlation_heatmap.png")
         plt.close()
-    sns.pairplot(numeric_data)
-    plt.savefig("pairplot.png")
-    plt.close()
+
+    # Distribution plot for a key numeric column
+    if not numeric_data.empty:
+        key_numeric_column = numeric_data.columns[0]
+        sns.histplot(numeric_data[key_numeric_column], kde=True, bins=30, color='blue')
+        plt.title(f"Distribution of {key_numeric_column}")
+        plt.xlabel(key_numeric_column)
+        plt.ylabel("Frequency")
+        plt.savefig(f"distribution_{key_numeric_column}.png")
+        plt.close()
+
+    # Box plot for numeric vs categorical
+    if not categorical_data.empty and not numeric_data.empty:
+        cat_col = categorical_data.columns[0]
+        num_col = numeric_data.columns[0]
+        sns.boxplot(x=cat_col, y=num_col, data=data)
+        plt.title(f"Box Plot of {num_col} by {cat_col}")
+        plt.savefig(f"boxplot_{num_col}_by_{cat_col}.png")
+        plt.close()
+
+    # Bar plot for a categorical column
+    if not categorical_data.empty:
+        cat_col = categorical_data.columns[0]
+        sns.countplot(x=cat_col, data=data)
+        plt.title(f"Bar Plot of {cat_col}")
+        plt.savefig(f"barplot_{cat_col}.png")
+        plt.close()
+
+# Efficient data summarization
+def summarize_data(data):
+    numeric_data = data.select_dtypes(include=[np.number])
+    categorical_data = data.select_dtypes(exclude=[np.number])
+    return {
+        "numeric_summary": numeric_data.describe().to_dict(),
+        "categorical_summary": categorical_data.describe(include='all').to_dict(),
+    }
 
 # Generate dynamic LLM prompt
-def generate_prompt(data, missing_values, numeric_data):
+def generate_prompt(data, missing_values, numeric_summary):
     prompt = f"""
     Analyze the following dataset:
     - Columns: {data.columns.tolist()}
     - Missing values per column: {missing_values.to_dict()}
-    - Summary statistics for numeric columns: {numeric_data.describe().to_dict()}
+    - Summary statistics for numeric columns: {numeric_summary}
     Suggest significant analyses, findings, and a possible narrative for this data.
     """
     return prompt
@@ -113,15 +150,6 @@ def generate_narrative(insights, data, correlation_matrix):
         f.write("## Insights\n")
         f.write(insights)
 
-# Efficient data summarization
-def summarize_data(data):
-    numeric_data = data.select_dtypes(include=[np.number])
-    categorical_data = data.select_dtypes(exclude=[np.number])
-    return {
-        "numeric_summary": numeric_data.describe().to_dict(),
-        "categorical_summary": categorical_data.describe(include='all').to_dict(),
-    }
-
 # Main analysis function
 def analyze_dataset(filename):
     try:
@@ -137,7 +165,7 @@ def analyze_dataset(filename):
 
         summary = summarize_data(data)
 
-        prompt = generate_prompt(data, missing_values, numeric_data)
+        prompt = generate_prompt(data, missing_values, summary['numeric_summary'])
         insights = fetch_llm_response(prompt)
         print("LLM Analysis:")
         print(insights)

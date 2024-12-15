@@ -27,7 +27,7 @@ API_URL = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
 
 # Function to interact with the LLM
 def fetch_llm_response(prompt, temperature=0.7):
-    # Fetch response from GPT-4o-Mini via AI Proxy.
+    """Fetch response from LLM via AI Proxy."""
     headers = {
         "Authorization": f"Bearer {AIPROXY_TOKEN}",
         "Content-Type": "application/json",
@@ -46,7 +46,7 @@ def fetch_llm_response(prompt, temperature=0.7):
 
 # Function to load dataset with error handling for different encodings
 def load_dataset(filename):
-    # Attempt to load dataset with different encodings.
+    """Load dataset with multiple encoding attempts."""
     encodings = [
         "utf-8", "ISO-8859-1", "windows-1252", "utf-16", "utf-32",
         "GB2312", "GBK", "shift_jis", "big5", "macroman", "EUC-JP", "KOI8-R", "windows-1250"
@@ -64,13 +64,12 @@ def load_dataset(filename):
 
 # Analyze missing values and return the result
 def analyze_missing_values(data):
-    # Analyze and return missing values in the dataset
-    missing_values = data.isnull().sum()
-    return missing_values
+    """Analyze and return missing values in the dataset."""
+    return data.isnull().sum()
 
 # Perform correlation analysis on numeric columns and visualize
 def analyze_correlation(data):
-    # Perform correlation analysis on numeric columns
+    """Perform correlation analysis on numeric columns."""
     numeric_data = data.select_dtypes(include=[np.number])
     if numeric_data.shape[1] > 1:
         correlation_matrix = numeric_data.corr()
@@ -82,9 +81,22 @@ def analyze_correlation(data):
         correlation_matrix = None
     return correlation_matrix
 
+# Additional visualizations for deeper insights
+def generate_additional_visualizations(data):
+    """Create additional visualizations for deeper insights."""
+    numeric_data = data.select_dtypes(include=[np.number])
+    for column in numeric_data.columns:
+        plt.figure(figsize=(8, 6))
+        sns.histplot(numeric_data[column], kde=True, bins=30, color='blue')
+        plt.title(f"Distribution of {column}")
+        plt.xlabel(column)
+        plt.ylabel("Frequency")
+        plt.savefig(f"distribution_{column}.png")
+        plt.close()
+
 # Generate dynamic LLM prompt for analysis
 def generate_prompt(data, missing_values, numeric_data):
-    # Generate dynamic LLM prompt for analysis.
+    """Generate dynamic LLM prompt for analysis."""
     prompt = f"""
     Analyze the following dataset:
     - Columns: {data.columns.tolist()}
@@ -96,7 +108,7 @@ def generate_prompt(data, missing_values, numeric_data):
 
 # Generate the final narrative and save it to README.md
 def generate_narrative(insights, data, correlation_matrix):
-    # Generate the final narrative with insights and visualizations.
+    """Generate the final narrative with insights and visualizations."""
     with open("README.md", "w") as f:
         f.write("# Automated Dataset Analysis\n\n")
         f.write("## Summary\n")
@@ -110,7 +122,7 @@ def generate_narrative(insights, data, correlation_matrix):
 
 # Main analysis function
 def analyze_dataset(filename):
-    # Perform generic analysis and generate insights
+    """Perform generic analysis and generate insights."""
     try:
         # Load dataset
         data = load_dataset(filename)
@@ -123,6 +135,9 @@ def analyze_dataset(filename):
 
         # Perform correlation analysis
         correlation_matrix = analyze_correlation(data)
+
+        # Generate additional visualizations
+        generate_additional_visualizations(data)
 
         # Generate dynamic LLM prompt
         prompt = generate_prompt(data, missing_values, numeric_data)
@@ -144,7 +159,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: uv run autolysis.py <dataset.csv>")
         sys.exit(1)
-    
+
     dataset_filename = sys.argv[1]
     analyze_dataset(dataset_filename)
 

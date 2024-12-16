@@ -12,6 +12,7 @@
 import os
 import sys
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import requests
@@ -42,7 +43,7 @@ def fetch_llm_response(prompt, temperature=0.7):
         print(f"Error: {response.status_code} - {response.text}")
         return None
 
-# Function to load dataset
+# Function to load dataset with error handling for different encodings
 def load_dataset(filename):
     encodings = [
         "utf-8", "ISO-8859-1", "windows-1252", "utf-16", "utf-32",
@@ -57,61 +58,90 @@ def load_dataset(filename):
             continue
     print("Error: Could not load file with common encodings.")
     return None
-
-# Analyze missing values and return summary
+# Analyze missing values and return the result
 def analyze_missing_values(data):
-    missing_summary = data.isnull().sum().to_frame(name="Missing Values")
-    missing_summary["% of Total"] = (missing_summary["Missing Values"] / len(data)) * 100
-    return missing_summary
+    missing_values = data.isnull().sum()
+    missing_percentage = (missing_values / len(data)) * 100
+    return pd.DataFrame({"Missing Values": missing_values, "% of Total": missing_percentage})
 
-# Generate key visualizations
-def create_visualizations(data):
-    numeric_data = data.select_dtypes(include=["number"])
-    
-    # Visualization 1: Correlation Matrix
+# Perform correlation analysis and visualize
+def analyze_correlation(data):
+    numeric_data = data.select_dtypes(include=[np.number])
     if numeric_data.shape[1] > 1:
         correlation_matrix = numeric_data.corr()
         sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", cbar=True)
-        plt.title("Correlation Matrix")
+        plt.title("Correlation Matrix of Numeric Features")
         plt.savefig("correlation_matrix.png")
         plt.close()
+        return correlation_matrix
+    return None
 
-    # Visualization 2: Histogram for all numeric columns
-    for column in numeric_data.columns[:1]:  # Focus on 1 key column for speed
-        sns.histplot(numeric_data[column], kde=True, bins=30, color='blue')
-        plt.title(f"Distribution of {column}")
-        plt.savefig(f"distribution_{column}.png")
+# Streamlined visualizations
+def create_visualizations(data):
+    numeric_data = data.select_dtypes(include=[np.number])
+    categorical_data = data.select_dtypes(exclude=[np.number])
+    # Correlation matrix
+    if numeric_data.shape[1] > 1:
+        sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm")
+        plt.title("Correlation Heatmap")
+        plt.savefig("correlation_heatmap.png")
         plt.close()
+    # Distribution plot for a key numeric column
+    if not numeric_data.empty:
+        key_numeric_column = numeric_data.columns[0]
+        sns.histplot(numeric_data[key_numeric_column], kde=True, bins=30, color='blue')
+        plt.title(f"Distribution of {key_numeric_column}")
+        plt.xlabel(key_numeric_column)
+        plt.ylabel("Frequency")
+        plt.savefig(f"distribution_{key_numeric_column}.png")
+        plt.close()
+    # Box plot for numeric vs categorical
+    if not categorical_data.empty and not numeric_data.empty:
+        cat_col = categorical_data.columns[0]
+        num_col = numeric_data.columns[0]
+        sns.boxplot(x=cat_col, y=num_col, data=data)
+        plt.title(f"Box Plot of {num_col} by {cat_col}")
+        plt.savefig(f"boxplot_{num_col}_by_{cat_col}.png")
+        plt.close()
+    # Bar plot for a categorical column
+    if not categorical_data.empty:
+        cat_col = categorical_data.columns[0]
+        sns.countplot(x=cat_col, data=data)
+        plt.title(f"Bar Plot of {cat_col}")
+        plt.savefig(f"barplot_{cat_col}.png")
+        plt.close()
+# Efficient data summarization
+def summarize_data(data):
+    numeric_data = data.select_dtypes(include=[np.number])
+    categorical_data = data.select_dtypes(exclude=[np.number])
+    return {
+        "numeric_summary": numeric_data.describe().to_dict(),
+        "categorical_summary": categorical_data.describe(include='all').to_dict(),
+    }
 
-    # Visualization 3: Pairplot (subset of columns for performance)
-    sns.pairplot(numeric_data.iloc[:, :3])  # Limit pairplot to first 3 columns
-    plt.savefig("pairplot.png")
-    plt.close()
-
-# Generate a comprehensive prompt
-def generate_prompt(data):
-    column_info = data.describe(include="all").to_dict()
-    missing_values = analyze_missing_values(data).to_dict()
+# Generate dynamic LLM prompt
+def generate_prompt(data, missing_values, numeric_summary):
     prompt = f"""
     Analyze the following dataset:
-    - Column details: {column_info}
-    - Missing values summary: {missing_values}
-    Use Python (pandas, seaborn, matplotlib) for the analysis. Suggest patterns, trends, anomalies, and other key findings. Provide insights that can be deduced.
-    Also describe all the charts generated.
-    Note: Dont give codes instead do the analysis yourself and then provide the necessary values. At the end give a proper narrative. 
+    - Columns: {data.columns.tolist()}
+    - Missing values per column: {missing_values.to_dict()}
+    - Summary statistics for numeric columns: {numeric_summary}
+    Suggest significant analyses, findings, and a possible narrative for this data.
     """
     return prompt
 
-# Generate README with detailed insights
-def generate_readme(insights):
+# Generate README with detailed analysis
+def generate_narrative(insights, data, correlation_matrix):
     with open("README.md", "w") as f:
         f.write("# Automated Dataset Analysis\n\n")
+        f.write("## Summary\n")
+        f.write(f"Columns: {data.columns.tolist()}\n")
+        f.write(f"Missing Values: {analyze_missing_values(data).to_dict()}\n")
+        f.write("## Correlation Matrix\n")
+        if correlation_matrix is not None:
+            f.write("See correlation_matrix.png for details.\n")
         f.write("## Insights\n")
         f.write(insights)
-        f.write("\n\n## Visualizations\n")
-        f.write("- Correlation Matrix: correlation_matrix.png\n")
-        f.write("- Distribution of Key Numeric Column: distribution_<column>.png\n")
-        f.write("- Pairplot: pairplot.png\n")
 
 # Main analysis function
 def analyze_dataset(filename):
@@ -120,17 +150,18 @@ def analyze_dataset(filename):
         if data is None:
             return
 
-        # Generate visualizations
+        missing_values = analyze_missing_values(data)
+        numeric_data = data.select_dtypes(include=[np.number])
+        correlation_matrix = analyze_correlation(data)
         create_visualizations(data)
 
-        # Generate and fetch insights
-        prompt = generate_prompt(data)
+        summary = summarize_data(data)
+        prompt = generate_prompt(data, missing_values, summary['numeric_summary'])
         insights = fetch_llm_response(prompt)
         print("LLM Analysis:")
         print(insights)
 
-        # Generate README
-        generate_readme(insights)
+        generate_narrative(insights, data, correlation_matrix)
 
     except Exception as e:
         print(f"Error during analysis: {e}")
